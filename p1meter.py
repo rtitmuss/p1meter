@@ -46,19 +46,20 @@ def calculate_crc(crc, buf):
 def read_p1_meter(readline):
     header = None
     crc = 0
+    lines = []
     data = {}
 
     while True:
         uart_line = readline()
         
         if uart_line is None:
-            continue  # timeout
+            return None, "timeout"  # timeout
 
         try:
             line = uart_line.decode().strip()
         except BaseException as error:
             print(f'decode error: {uart_line}')
-            continue  # uart error
+            return None, "decode"  # decode error
 
         print(line)
 
@@ -69,18 +70,21 @@ def read_p1_meter(readline):
         if not header and line[0] == '/':
             header = line
             crc = calculate_crc(0, uart_line)
-            data = {}            
+            lines = []
             continue  # header
 
         if line[0] == '!':
             crc = calculate_crc(crc, b'!')
             if line != f'!{crc:04X}':
                 print(f'CRC error: {line} !{crc:04X}')
-                return None
-            return data
+                return None, "crc"  # crc error
+            break  # success, exit the collection loop
 
         crc = calculate_crc(crc, uart_line)
-        
+        lines.append(line)
+
+    # Parse all lines now that CRC is verified
+    for line in lines:
         obis_code, value, unit, timestamp = parse_line(line)
         if obis_code:
             description = obis_to_description(obis_code)
@@ -101,6 +105,8 @@ def read_p1_meter(readline):
                 "state": value,
                 "attributes": attributes
             }
-            #print(data)
         else:
             print(f"Line format is incorrect: {line}")
+            return None, "format"  # format error
+
+    return data, None  # success
