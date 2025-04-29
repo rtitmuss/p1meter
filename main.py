@@ -1,6 +1,7 @@
 from machine import UART, Pin, Timer, WDT
 import network
 import ntptime
+import re
 import time
 import urequests
 
@@ -131,7 +132,18 @@ status_sensors = {
 
 def count_exception(e):
     global exception_counts, status_sensors
-    exception_type = type(e).__name__.lower()
+    exception_name = type(e).__name__.lower()
+
+    if isinstance(e, OSError):
+        match = re.search(r'([A-Z_][A-Z_]+)', str(e))
+        if match:
+            error_name = match.group(0).lower()
+            exception_type = f"{exception_name}_{error_name}"
+        else:
+            exception_type = f"{exception_name}_{e.errno}"
+    else:
+        exception_type = exception_name
+
     exception_counts[exception_type] = exception_counts.get(exception_type, 0) + 1
 
     # Add new sensor type if this is the first time we've seen this exception
@@ -182,7 +194,6 @@ def wifi_connect():
         
         timeout_time = time.time() + 10
         while not wlan.isconnected():
-            wdt.feed()
             if time.time() > timeout_time:
                 print("Failed to connect to WiFi: Timeout")
                 return False
